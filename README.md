@@ -57,15 +57,47 @@ The shop, customers and money are made up, so nothing real is sent or spent. The
 real: Claude's choices change from run to run, and the rules don't. You can add your own tickets
 to see how it handles them. It runs on your own Claude account, so you need one to start the agent.
 
-## Run it on your machine
+No Claude account? The page also keeps one saved real run. Anyone who opens it can watch what
+the agent did, step by step, with **Play it back**.
 
-The offline version replays one scripted night, so it gives the same result every time.
-No dependencies, no API key. Python 3.9+.
+## Run a real agent on your own computer (free, no API key)
+
+`local_agent.py` runs the same night with a free open-source model on your machine, through
+[Ollama](https://ollama.com). No account, no API key, no cost, and nothing leaves your computer.
+The model decides what to do, and every action goes through the same `rulebook.py`.
+
+1. Install Ollama from [ollama.com](https://ollama.com) and open it.
+2. Download a small model that can use tools (about 2.5 GB):
+
+   ```bash
+   ollama pull qwen3:4b
+   ```
+
+3. Run the night shift:
+
+   ```bash
+   python3 local_agent.py
+   ```
+
+It prints each action with the rulebook's verdict, then the agent's morning note, then asks you
+to approve or decline anything that's waiting. Try another model with `--model llama3.2:3b`.
+
+Small models lose track when handed eight tasks at once, so the agent works one inbox item at a
+time by default. A bigger model can take the whole inbox in one go with `--all-at-once`. On a Mac
+with 8 GB of memory, a run with `qwen3:4b` can take several minutes.
+
+Small models are slower and less careful than big ones. They sometimes skip a ticket or ask for
+something odd. That's the point of the demo: the rules hold whichever model is proposing.
+
+## Run the scripted version
+
+`night_shift.py` replays one scripted night, so it gives the same result every time and needs
+nothing installed. Python 3.9+.
 
 ```bash
 python3 night_shift.py               # one scripted night, coloured log
-python3 -m unittest -v               # 7 tests for the Python rulebook
-node --test live/rulebook.test.cjs   # the same 7 tests for the live page's rulebook
+python3 -m unittest -v               # all Python tests: the rulebook and the local agent
+node --test live/rulebook.test.cjs   # the same 7 tests for the live page's rulebook, plus a match check
 python3 post/build_images.py         # rebuild the images (needs Google Chrome)
 ```
 
@@ -73,10 +105,12 @@ python3 post/build_images.py         # rebuild the images (needs Google Chrome)
 
 - `rulebook.py`: the whole set of rules, 36 lines of Python
 - `test_rulebook.py`: unit tests for the rules
+- `local_agent.py`: a real agent on a free local model (Ollama), checked by the rulebook
+- `test_local_agent.py`: tests for the local agent, using a stand-in model and a fake Ollama server
 - `night_shift.py`: one scripted night for an online shop's support agent (11 actions)
 - `live/index.html`: the live demo page, where Claude makes the decisions
-- `live/rulebook.js`: the same rules in JavaScript, which the live page enforces
-- `live/rulebook.test.cjs`: the same 7 tests, run against the JavaScript rules
+- `live/rulebook.js`: the same rules in JavaScript; the live page carries an exact copy
+- `live/rulebook.test.cjs`: the same 7 tests for the JavaScript rules, plus a check that the page's copy matches
 - `post/`: the two images and the script that builds them from the real code
 
 ## Use it with your own agent

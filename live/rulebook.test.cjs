@@ -1,4 +1,5 @@
-// The same 7 tests as test_rulebook.py, run against the page's rulebook.js.
+// The same 7 tests as test_rulebook.py, run against the page's rulebook.js,
+// plus a check that the live page enforces exactly this file.
 //   node live/rulebook.test.cjs
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
@@ -38,4 +39,14 @@ test("deletes stay inside the workspace", () => {
 
 test("unknown actions are denied by default", () => {
   assert.equal(verdict({ type: "update_prices", change: -0.2 }), "deny");
+});
+
+test("the live page enforces exactly this rulebook", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const page = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+  const inline = page.match(/<script id="rulebook-js">([\s\S]*?)<\/script>/);
+  assert.ok(inline, "index.html has a <script id=\"rulebook-js\"> block");
+  const file = fs.readFileSync(path.join(__dirname, "rulebook.js"), "utf8");
+  assert.equal(inline[1].trim(), file.trim(), "the copy in index.html matches rulebook.js");
 });

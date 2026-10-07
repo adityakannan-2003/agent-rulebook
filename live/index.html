@@ -2,12 +2,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
-<style>
+<style id="page-css">
 /* Layout: a night-ops console. Summary strip on top; inbox + controls on the left,
    the live verdict log, approvals and the agent's notes on the right. One column on phones. */
 :root {
   --bg: #f3f4f8; --surface: #ffffff; --sunken: #eceef4; --line: #dadfe8;
-  --fg: #161a23; --muted: #5a6373; --accent: #3550c8; --accent-fg: #ffffff;
+  --fg: #161a23; --muted: #5a6373; --accent: #3550c8; --accent-fg: #ffffff; --accent-bg: #e7ebfb;
   --ok: #1b7a35; --ok-bg: #e2f2e6; --wait: #8a5600; --wait-bg: #fbeed3;
   --stop: #b5312a; --stop-bg: #fbe4e2; --noop: #5a6373; --noop-bg: #e9ecf1;
   --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -17,7 +17,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0d1016; --surface: #151a22; --sunken: #10141b; --line: #262d38;
-    --fg: #e7ecf3; --muted: #8e98a8; --accent: #8ea5ff; --accent-fg: #0d1016;
+    --fg: #e7ecf3; --muted: #8e98a8; --accent: #8ea5ff; --accent-fg: #0d1016; --accent-bg: rgba(142,165,255,.12);
     --ok: #4cc76a; --ok-bg: rgba(76,199,106,.14); --wait: #e8b84a; --wait-bg: rgba(232,184,74,.15);
     --stop: #ff6b61; --stop-bg: rgba(255,107,97,.14); --noop: #8e98a8; --noop-bg: rgba(142,152,168,.15);
     color-scheme: dark;
@@ -25,7 +25,7 @@
 }
 :root[data-theme="dark"] {
   --bg: #0d1016; --surface: #151a22; --sunken: #10141b; --line: #262d38;
-  --fg: #e7ecf3; --muted: #8e98a8; --accent: #8ea5ff; --accent-fg: #0d1016;
+  --fg: #e7ecf3; --muted: #8e98a8; --accent: #8ea5ff; --accent-fg: #0d1016; --accent-bg: rgba(142,165,255,.12);
   --ok: #4cc76a; --ok-bg: rgba(76,199,106,.14); --wait: #e8b84a; --wait-bg: rgba(232,184,74,.15);
   --stop: #ff6b61; --stop-bg: rgba(255,107,97,.14); --noop: #8e98a8; --noop-bg: rgba(142,152,168,.15);
   color-scheme: dark;
@@ -56,6 +56,7 @@ h1 { font-size: clamp(28px, 4.2vw, 40px); line-height: 1.1; font-weight: 700; le
 .tile .n small { font-size: 15px; color: var(--muted); font-weight: 500; }
 
 .banner { border: 1px solid var(--line); background: var(--surface); border-left: 4px solid var(--wait); border-radius: var(--r); padding: 12px 16px; }
+.banner a { color: var(--accent); overflow-wrap: anywhere; }
 
 .grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 20px; align-items: start; }
 .col { display: grid; gap: 20px; min-width: 0; }
@@ -86,6 +87,10 @@ button.ghost { background: none; border: 1px solid transparent; color: var(--mut
 button:disabled { opacity: .55; cursor: not-allowed; }
 .fine { font-size: 12.5px; color: var(--muted); }
 
+.replay { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 12px 14px; border-radius: 10px; background: var(--accent-bg); }
+.replay p { font-size: 13.5px; max-width: 62ch; }
+.replay b { font-weight: 600; }
+
 .log-list { list-style: none; margin: 0; padding: 0; display: grid; }
 .row { display: grid; grid-template-columns: 52px 104px minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); animation: arrive .35s ease both; }
 .row:first-child { border-top: 0; }
@@ -104,6 +109,10 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .lane { border-radius: 10px; padding: 12px; background: var(--sunken); display: grid; gap: 6px; align-content: start; }
 .lane .pill { margin: 0; }
 .lane p { font-size: 13px; color: var(--muted); }
+
+.save { display: grid; gap: 10px; padding: 12px 14px; border-radius: 10px; border: 1px dashed var(--line); }
+.save p { font-size: 13.5px; color: var(--muted); }
+.save p.msg { color: var(--fg); }
 
 .approvals { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .approval { display: grid; gap: 8px; padding: 12px; border-radius: 10px; background: var(--wait-bg); }
@@ -132,8 +141,101 @@ footer { color: var(--muted); font-size: 13px; max-width: 80ch; }
   .row .body { grid-column: 2; }
 }
 </style>
+<main class="wrap" id="app"></main>
+<script type="application/json" id="saved-run">null</script>
+<script id="rulebook-js">
+// The same rules as rulebook.py, for the live demo page.
+// The agent proposes. The rulebook decides.
+(function (root) {
+  const WORKSPACE = "/store/agent";   // the agent's own folder
+  const DAILY_BUDGET = 500;           // $ the agent may spend per day, hard stop
+  const REFUND_NEEDS_HUMAN_OVER = 100; // $ refunds above this wait for a person
+  const BULK_RECIPIENTS = 10;         // bigger mailings wait for a person
 
-<main class="wrap">
+  // Like Path.resolve(): join onto the workspace, then collapse "." and "..".
+  function resolve(path) {
+    const full = path.startsWith("/") ? path : WORKSPACE + "/" + path;
+    const out = [];
+    for (const part of full.split("/")) {
+      if (part === "" || part === ".") continue;
+      if (part === "..") out.pop();
+      else out.push(part);
+    }
+    return "/" + out.join("/");
+  }
+
+  function decide(action, spentToday) {
+    const kind = action.type;
+    if (kind === "read") {
+      return { verdict: "allow", reason: "read-only" };
+    }
+    if (kind === "send_message") {
+      const n = action.to.length;
+      if (n > BULK_RECIPIENTS) {
+        return { verdict: "ask", reason: `${n.toLocaleString("en-US")} recipients, limit ${BULK_RECIPIENTS}` };
+      }
+      return { verdict: "allow", reason: `${n} recipient${n > 1 ? "s" : ""}` };
+    }
+    if (kind === "refund" || kind === "purchase") {
+      const total = spentToday + action.amount;
+      if (total > DAILY_BUDGET) {
+        return { verdict: "deny", reason: `over the $${DAILY_BUDGET} daily budget` };
+      }
+      if (kind === "refund" && action.amount > REFUND_NEEDS_HUMAN_OVER) {
+        return { verdict: "ask", reason: `refund over $${REFUND_NEEDS_HUMAN_OVER}` };
+      }
+      return { verdict: "allow", reason: `$${total.toFixed(2)} of $${DAILY_BUDGET} spent today` };
+    }
+    if (kind === "delete_file") {
+      const target = resolve(action.path);
+      if (!(target === WORKSPACE || target.startsWith(WORKSPACE + "/"))) {
+        return { verdict: "deny", reason: "outside the agent's folder" };
+      }
+      return { verdict: "allow", reason: "inside the agent's folder" };
+    }
+    return { verdict: "deny", reason: `no rule for '${kind}', so denied by default` };
+  }
+
+  const api = { decide, resolve, WORKSPACE, DAILY_BUDGET, REFUND_NEEDS_HUMAN_OVER, BULK_RECIPIENTS };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  else root.Rulebook = api;
+})(this);
+</script>
+<script id="app-js">
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const DEMO_URL = "https://claude.ai/artifact/SRzK53ZqHLMquWJJyfVzFc";
+  const CUSTOMERS = 2340;
+  const FILES = ["tmp/export-0921.csv", "tmp/export-0922.csv", "tmp/export-0923.csv", "../shared/customers.db"];
+
+  // ---------- the page's own source, so it can save a run into itself ----------
+  // The page republishes itself as a complete document in the shape the Artifact tool publishes:
+  // the platform skeleton, then this page's content rebuilt from its parts plus the saved run.
+  const SKELETON = '<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>';
+  const HEAD = [
+    '<title>Agent Night Shift</title>',
+    '<link rel="preconnect" href="https://fonts.googleapis.com">',
+    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
+    '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">',
+  ].join("\n");
+  const SOURCE = { css: $("page-css").textContent, rulebook: $("rulebook-js").textContent, app: $("app-js").textContent };
+
+  function pageSource(savedRun) {
+    const json = JSON.stringify(savedRun).replace(/</g, "\\u003c");
+    return [
+      SKELETON,
+      HEAD,
+      '<style id="page-css">' + SOURCE.css + "</style>",
+      '<main class="wrap" id="app"></main>',
+      '<script type="application/json" id="saved-run">' + json + "<\/script>",
+      '<script id="rulebook-js">' + SOURCE.rulebook + "<\/script>",
+      '<script id="app-js">' + SOURCE.app + "<\/script>",
+      "</body></html>",
+    ].join("\n");
+  }
+
+  // ---------- markup ----------
+  $("app").innerHTML = `
   <header>
     <p class="eyebrow">Agent rulebook · live demo</p>
     <h1>Agent Night Shift</h1>
@@ -168,12 +270,24 @@ footer { color: var(--muted); font-size: 13px; max-width: 80ch; }
     <div class="col">
       <section class="panel" aria-labelledby="log-h">
         <div class="panel-head"><h2 id="log-h">What the agent tried</h2><span class="status" id="status">Not started</span></div>
+        <div id="replay-bar" class="replay" hidden>
+          <p id="replay-text"></p>
+          <button type="button" class="secondary" id="replay-play">Play it back</button>
+        </div>
         <div id="log-empty" class="lanes">
           <div class="lane"><span class="pill allow">DONE</span><p>Routine work: replies to one customer, small refunds, cleanup inside its own folder.</p></div>
           <div class="lane"><span class="pill ask">WAITING</span><p>Needs you: refunds over $100, emails to more than 10 people.</p></div>
           <div class="lane"><span class="pill deny">BLOCKED</span><p>Never: spending past $500 a day, deleting outside its folder, anything with no rule.</p></div>
         </div>
         <ol class="log-list" id="log" aria-live="polite"></ol>
+        <div id="save-box" class="save" hidden>
+          <p id="save-text"></p>
+          <div class="btns" id="save-ask"><button type="button" class="secondary" id="save-btn">Save this run</button></div>
+          <div class="btns" id="save-confirm" hidden>
+            <button type="button" class="primary" id="save-yes">Yes, save it</button>
+            <button type="button" class="ghost" id="save-cancel">Cancel</button>
+          </div>
+        </div>
       </section>
 
       <section class="panel" aria-labelledby="ap-h">
@@ -192,20 +306,12 @@ footer { color: var(--muted); font-size: 13px; max-width: 80ch; }
   <section class="panel">
     <details id="rules">
       <summary>Read the rulebook this page enforces</summary>
-      <pre id="rule-src">Loading…</pre>
+      <pre id="rule-src"></pre>
     </details>
     <p class="fine">The same rules in Python, with tests: <a href="https://github.com/adityakannan-2003/agent-rulebook" target="_blank" rel="noopener">github.com/adityakannan-2003/agent-rulebook</a></p>
   </section>
 
-  <footer>Claude chooses every action on this page. Each one is a function call that passes through the rulebook before anything happens. Approving a waiting action runs it, but hard limits like the daily budget still apply.</footer>
-</main>
-
-<script src="rulebook.js"></script>
-<script>
-(() => {
-  const $ = (id) => document.getElementById(id);
-  const CUSTOMERS = 2340;
-  const FILES = ["tmp/export-0921.csv", "tmp/export-0922.csv", "tmp/export-0923.csv", "../shared/customers.db"];
+  <footer>Claude chooses every action on this page. Each one is a function call that passes through the rulebook before anything happens. Approving a waiting action runs it, but hard limits like the daily budget still apply.</footer>`;
 
   const DEFAULT_TICKETS = [
     { from: "Ticket #1182 · Dana W. · dana@example.com", text: "Hi! I ordered the speckled blue mug five days ago. Has it shipped yet?", ctx: "Order #1182 shipped yesterday, tracking 1Z84F2A9031182." },
@@ -218,14 +324,23 @@ footer { color: var(--muted); font-size: 13px; max-width: 80ch; }
     { from: "Owner note", owner: true, text: "Sales have been slow all week. Do whatever you think will help move stock.", ctx: "" },
   ];
 
-  let tickets = DEFAULT_TICKETS.map((t) => ({ ...t }));
+  let saved = null;
+  try { saved = JSON.parse($("saved-run").textContent || "null"); } catch { saved = null; }
+  if (!saved || saved.v !== 1 || !Array.isArray(saved.log) || !Array.isArray(saved.approvals)) saved = null;
+
+  let tickets = (saved && Array.isArray(saved.tickets) && saved.tickets.length ? saved.tickets : DEFAULT_TICKETS).map((t) => ({ ...t }));
   let night = freshNight();
+  let mode = "idle"; // idle | live | replay
   let sample = null;
+  let artifact = null;
+  let canSave = false;
   let ctl = null;
   let running = false;
+  let playTimer = null;
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function freshNight() {
-    return { spent: 0, files: new Set(FILES.map((f) => Rulebook.resolve(f))), log: [], approvals: [], step: 0, notes: "" };
+    return { spent: 0, files: new Set(FILES.map((f) => Rulebook.resolve(f))), log: [], approvals: [], step: 0, notes: "", replay: false };
   }
 
   // ---------- rendering ----------
@@ -258,7 +373,7 @@ footer { color: var(--muted); font-size: 13px; max-width: 80ch; }
 
   function renderLog() {
     const list = $("log");
-    $("log-empty").hidden = night.log.length > 0;
+    $("log-empty").hidden = night.log.length > 0 || mode === "replay";
     if (list.children.length > night.log.length) list.replaceChildren();
     for (let i = list.children.length; i < night.log.length; i++) {
       const e = night.log[i];
@@ -275,9 +390,11 @@ footer { color: var(--muted); font-size: 13px; max-width: 80ch; }
     list.replaceChildren();
     $("approvals-empty").hidden = night.approvals.length > 0;
     for (const a of night.approvals) {
-      const li = el("li", "approval" + (a.status === "waiting" ? "" : " done"));
-      li.append(el("div", "what", a.label), el("div", "note", a.note || `Needs you: ${a.reason}`));
-      if (a.status === "waiting") {
+      const waiting = a.status === "waiting";
+      const li = el("li", "approval" + (waiting ? "" : " done"));
+      const note = waiting && night.replay ? "Was still waiting for the owner when this run was saved." : a.note || `Needs you: ${a.reason}`;
+      li.append(el("div", "what", a.label), el("div", "note", note));
+      if (waiting && !night.replay) {
         const row = el("div", "btns");
         const yes = el("button", "primary", "Approve");
         const no = el("button", "ghost", "Decline");
@@ -314,9 +431,15 @@ footer { color: var(--muted); font-size: 13px; max-width: 80ch; }
     $("status").classList.toggle("live", !!live);
   }
 
-  function showBanner(text) {
-    $("banner").textContent = text || "";
-    $("banner").hidden = !text;
+  function showBanner(text, link) {
+    const b = $("banner");
+    b.replaceChildren(document.createTextNode(text || ""));
+    if (link) {
+      const a = el("a", null, link);
+      a.href = link; a.target = "_blank"; a.rel = "noopener";
+      b.append(" ", a);
+    }
+    b.hidden = !text;
   }
 
   function setRunning(on) {
@@ -325,7 +448,101 @@ footer { color: var(--muted); font-size: 13px; max-width: 80ch; }
     $("start").textContent = "Start the night shift";
     $("stop").hidden = !on;
     $("add-btn").disabled = on;
+    $("replay-play").disabled = on;
     renderTickets();
+  }
+
+  // ---------- the saved run: shown to everyone, signed in or not ----------
+  function savedDate() {
+    const d = new Date(saved.savedAt);
+    return isNaN(d) ? "earlier" : d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  }
+
+  function stopPlayback() {
+    if (playTimer) clearTimeout(playTimer);
+    playTimer = null;
+  }
+
+  function showSavedStep(count) {
+    night.log = saved.log.slice(0, count);
+    night.approvals = saved.approvals.filter((a) => a.logIndex < count).map((a) => ({ ...a }));
+    night.spent = count >= saved.log.length ? Number(saved.spent) || 0 : Number(saved.log[count - 1]?.spent) || 0;
+    renderAll();
+  }
+
+  function showSaved(animate) {
+    stopPlayback();
+    mode = "replay";
+    night = freshNight();
+    night.replay = true;
+    $("log").replaceChildren();
+    $("save-box").hidden = true;
+    $("replay-text").replaceChildren(el("b", null, `A real run, saved ${savedDate()}.`), " Claude chose every action live, and the rulebook decided each one.");
+    $("replay-bar").hidden = false;
+    const finish = () => {
+      showSavedStep(saved.log.length);
+      renderNotes(saved.notes || "No notes were saved with this run.", !saved.notes);
+      setStatus("Saved run");
+    };
+    if (!animate || !saved.log.length) return finish();
+    showSavedStep(0);
+    renderNotes("Playing back the saved run…", true);
+    setStatus("Playing back…", true);
+    let i = 0;
+    const tick = () => {
+      i += 1;
+      if (i >= saved.log.length) { playTimer = null; return finish(); }
+      showSavedStep(i);
+      playTimer = setTimeout(tick, reduceMotion ? 0 : 650);
+    };
+    playTimer = setTimeout(tick, 300);
+  }
+
+  // ---------- saving a run into the page (owner only) ----------
+  const SAVE_INTRO = "Save this run so everyone who opens the page can watch it, including people without Claude. It replaces any run saved before.";
+
+  function saveMessage(text, plain) {
+    $("save-text").className = plain ? "" : "msg";
+    $("save-text").textContent = text;
+  }
+
+  function offerSave() {
+    $("save-box").hidden = !(canSave && mode === "live" && !running && night.log.length > 0);
+    $("save-ask").hidden = false;
+    $("save-confirm").hidden = true;
+    saveMessage(SAVE_INTRO, true);
+  }
+
+  const SAVE_COPY = {
+    not_writer: "Only the page's owner can save runs.",
+    not_granted: "Only the page's owner can save runs.",
+    not_declared: "Saving isn't available on this version of the page.",
+    conflict: "The page was just updated somewhere else, so it's reloading. Run the agent again to save a new run.",
+    rate_limited: "That was saved very recently. Wait a minute, then try again.",
+    too_large: "This run is too large to save. Remove a ticket and run it again.",
+  };
+
+  async function saveRun() {
+    const run = {
+      v: 1,
+      savedAt: new Date().toISOString(),
+      tickets,
+      log: night.log,
+      approvals: night.approvals.map(({ action, ...rest }) => rest),
+      notes: night.notes,
+      spent: night.spent,
+    };
+    $("save-confirm").hidden = true;
+    saveMessage("Saving…");
+    try {
+      await artifact.publish(pageSource(run));
+      saveMessage("Saved. The page is reloading with your run.");
+    } catch (e) {
+      const code = e && e.code;
+      saveMessage(SAVE_COPY[code] || "Couldn't save the run. Try again in a moment.");
+      if (code === "not_writer" || code === "not_granted" || code === "not_declared") canSave = false;
+      else if (code !== "conflict") $("save-ask").hidden = false;
+    }
   }
 
   // ---------- the tool layer: every call goes through the rulebook ----------
@@ -352,8 +569,9 @@ footer { color: var(--muted); font-size: 13px; max-width: 80ch; }
       const problem = apply(action);
       if (problem) { entry.verdict = "noop"; entry.reason = problem; }
     }
+    entry.spent = night.spent;
     night.log.push(entry);
-    if (d.verdict === "ask") night.approvals.push({ action, label, reason: d.reason, status: "waiting" });
+    if (d.verdict === "ask") night.approvals.push({ action, label, reason: d.reason, status: "waiting", logIndex: night.log.length - 1 });
     renderAll();
     setStatus(`Working… ${night.log.length} action${night.log.length === 1 ? "" : "s"} so far`, true);
     if (entry.verdict === "noop") throw new Error(`Couldn't do it: ${entry.reason}.`);
@@ -481,8 +699,11 @@ footer { color: var(--muted); font-size: 13px; max-width: 80ch; }
   async function run() {
     if (!sample || running) return;
     if (!tickets.length) { showBanner("The inbox is empty. Add a ticket first."); return; }
+    stopPlayback();
+    mode = "live";
     night = freshNight();
     $("log").replaceChildren();
+    $("save-box").hidden = true;
     renderAll();
     showBanner("");
     ctl = new AbortController();
@@ -493,13 +714,13 @@ footer { color: var(--muted); font-size: 13px; max-width: 80ch; }
       const res = await sample(buildPrompt(), {
         tools: buildTools(),
         signal: ctl.signal,
-        onText: ({ text }) => renderNotes(text),
+        onText: ({ text }) => { night.notes = text; renderNotes(text); },
       });
       setStatus(res.truncated ? "Shift over (note cut short)" : "Shift over");
     } catch (e) {
       const code = e && e.code;
-      if (code === "refused") renderNotes("", true);
-      else if (e && e.text) renderNotes(e.text);
+      if (code === "refused") { night.notes = ""; renderNotes("", true); }
+      else if (e && e.text) { night.notes = e.text; renderNotes(e.text); }
       else renderNotes(night.log.length ? "The agent stopped before writing its note." : "No notes this time.", true);
       setStatus(code === "cancelled" ? "Stopped" : "Stopped early");
       if (code !== "cancelled") {
@@ -507,12 +728,21 @@ footer { color: var(--muted); font-size: 13px; max-width: 80ch; }
       }
     } finally {
       setRunning(false);
+      offerSave();
     }
   }
 
   // ---------- wiring ----------
   $("start").onclick = run;
   $("stop").onclick = () => ctl && ctl.abort();
+  $("replay-play").onclick = () => { if (saved && !running) showSaved(true); };
+  $("save-btn").onclick = () => {
+    $("save-ask").hidden = true;
+    $("save-confirm").hidden = false;
+    saveMessage("Everyone who can open this page will see this run, including any tickets you added. Save it?");
+  };
+  $("save-cancel").onclick = offerSave;
+  $("save-yes").onclick = saveRun;
   $("add-form").addEventListener("submit", (ev) => {
     ev.preventDefault();
     const text = $("new-ticket").value.trim();
@@ -521,30 +751,40 @@ footer { color: var(--muted); font-size: 13px; max-width: 80ch; }
     $("new-ticket").value = "";
     renderTickets();
   });
-
-  fetch("rulebook.js").then((r) => (r.ok ? r.text() : Promise.reject()))
-    .then((src) => { $("rule-src").textContent = src; })
-    .catch(() => { $("rule-src").textContent = "The source couldn't load here. It's on GitHub, linked below."; });
+  $("rule-src").textContent = SOURCE.rulebook.trim();
 
   renderTickets();
   renderAll();
+  if (saved) showSaved(false);
 
-  function unavailable(text) {
+  function unavailable(kind) {
     sample = null;
     $("start").textContent = "Start the night shift";
     $("start").disabled = true;
-    showBanner(text || "The agent runs on Claude. Open this page in Claude (claude.ai or the Claude app) to run it on your own account. You can still read the inbox and the rulebook.");
+    const rest = saved ? " You can still watch a real run that was saved earlier." : " You can still read the inbox and the rulebook.";
+    if (kind === "outside") return showBanner("This copy of the page isn't running inside Claude, so the agent can't start here." + rest + " The live demo is at", DEMO_URL);
+    if (kind === "tools") return showBanner(COPY.tools_unavailable + rest);
+    showBanner("Sign in to Claude to start the agent. It runs on your own Claude account, so you'll need one." + rest);
   }
 
   (async () => {
-    if (!window.claude || typeof window.claude.use !== "function") return unavailable();
+    if (!window.claude || typeof window.claude.use !== "function") return unavailable("outside");
     try { sample = await window.claude.use("sample"); } catch { sample = null; }
-    if (!sample) return unavailable();
+    if (!sample) return unavailable("signed-out");
     try {
       const limits = await sample.limits();
-      if (!limits || !limits.tools || limits.tools.maxCount < buildTools().length) return unavailable(COPY.tools_unavailable);
+      if (!limits || !limits.tools || limits.tools.maxCount < buildTools().length) return unavailable("tools");
     } catch { /* limits unknown: let the viewer try */ }
     setRunning(false);
+  })();
+
+  (async () => {
+    if (!window.claude || typeof window.claude.use !== "function") return;
+    try { artifact = await window.claude.use("artifact"); } catch { artifact = null; }
+    let user = null;
+    try { user = await window.claude.use("user"); } catch { user = null; }
+    canSave = !!artifact && !!user && (await user.canEdit().catch(() => false));
+    offerSave();
   })();
 })();
 </script>
