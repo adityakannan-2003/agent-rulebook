@@ -2,42 +2,86 @@
 
 **The model proposes. The rulebook decides.**
 
-![One simulated night of an always-on agent, every action checked by the rulebook](post/night-log.png)
+![One night of an always-on agent, every action checked by the rulebook](post/night-log.png)
 
-A tiny demo of keeping an always-on AI agent's limits *outside* the model. Every action
-the agent wants to take goes through one plain Python function, `decide()`, before it runs.
-The function returns one of three verdicts:
+## What it does, in plain English
 
-| Verdict | Meaning | Examples in the demo |
+An AI agent is software that doesn't just answer questions. It takes actions: it refunds
+orders, sends emails, buys supplies, deletes files.
+
+That's useful, but it raises an obvious question: what stops it from doing something you
+wouldn't have allowed? Asking the AI to "be careful" isn't a real answer, because the AI can
+misunderstand or make a mistake, and nobody is watching at 3 AM.
+
+This project puts a short list of rules between the AI and its actions. Before anything
+happens, the rules give one of three answers:
+
+| Answer | What happens | Examples |
 |---|---|---|
-| `allow` | do it, no human needed | reads, single-customer replies, small refunds, cleanup inside its own folder |
-| `ask` | park it until a person approves | refunds over $100, messages to more than 10 people |
-| `deny` | never | spending past $500/day, deleting outside its folder, any action type with no rule |
+| **Do it** | The action goes ahead. | Replying to one customer, a small refund, tidying up its own files |
+| **Ask a person first** | The action waits until a human approves it. | A refund over $100, an email to more than 10 people |
+| **Never** | The action is refused, and the AI is told why. | Spending more than $500 a day, deleting files outside its own folder, anything the rules don't mention |
 
-The last rule matters most: **anything not in the rulebook is denied by default.**
+The AI never gets to act directly. It can only *ask*, and plain code decides. The rules are
+ordinary code, so you can read them, test them and change them. You can't do any of that
+with a model's judgment.
 
-## Run it
+## Who it's for
 
+**Example: a small online shop owner.** Say you run a shop and want an AI assistant to
+handle customer messages overnight. You're happy for it to answer "where's my order?" and
+refund a $25 cracked mug on its own. You are *not* happy for it to refund $1,000, email your
+whole customer list, or slash every price because sales were slow. With a rulebook, the routine
+work gets done while you sleep, the big decisions wait for you in the morning, and the
+dangerous ones can't happen at all.
+
+The same idea helps:
+
+- **Developers building agents** for support, operations or finance who need spending limits,
+  approval steps and a safe default.
+- **Team leads and product managers** who need to explain, concretely, what "a human in the
+  loop" means before letting an agent near real customers or real money.
+
+## Try it live
+
+**[Agent Night Shift](https://claude.ai/artifact/SRzK53ZqHLMquWJJyfVzFc)** is a web page where a
+real Claude agent works through a night's inbox for a made-up mug shop. Claude reads the
+tickets and decides what to do. Every action it picks is a function call that goes through the
+rulebook first:
+
+- allowed actions happen in the simulated shop
+- actions that need a person land in a "Waiting for you" list, where you approve or decline them
+- blocked actions come back to Claude as an error, and it has to carry on without them
+
+The shop, customers and money are made up, so nothing real is sent or spent. The decisions are
+real: Claude's choices change from run to run, and the rules don't. You can add your own tickets
+to see how it handles them. It runs on your own Claude account, so you need one to start the agent.
+
+## Run it on your machine
+
+The offline version replays one scripted night, so it gives the same result every time.
 No dependencies, no API key. Python 3.9+.
 
 ```bash
-python3 night_shift.py          # one simulated night, coloured log
-python3 -m unittest -v          # 7 tests for the rulebook
-python3 post/build_images.py    # rebuild the LinkedIn images (needs Google Chrome)
+python3 night_shift.py               # one scripted night, coloured log
+python3 -m unittest -v               # 7 tests for the Python rulebook
+node --test live/rulebook.test.cjs   # the same 7 tests for the live page's rulebook
+python3 post/build_images.py         # rebuild the images (needs Google Chrome)
 ```
 
 ## Files
 
-- `rulebook.py`: the whole policy, 36 lines
-- `night_shift.py`: one simulated night for an online store's support agent (11 proposed actions)
-- `test_rulebook.py`: unit tests, because rules you can't test aren't rules
+- `rulebook.py`: the whole set of rules, 36 lines of Python
+- `test_rulebook.py`: unit tests for the rules
+- `night_shift.py`: one scripted night for an online shop's support agent (11 actions)
+- `live/index.html`: the live demo page, where Claude makes the decisions
+- `live/rulebook.js`: the same rules in JavaScript, which the live page enforces
+- `live/rulebook.test.cjs`: the same 7 tests, run against the JavaScript rules
 - `post/`: the two images and the script that builds them from the real code
 
-## Honest note
+## Use it with your own agent
 
-The agent's proposed actions in `night_shift.py` are scripted, so the demo runs offline
-and gives the same result every time. The rulebook doesn't care where an action came from.
-To use it with a real agent, call `decide()` in your tool layer before any tool runs:
+Call `decide()` in your tool layer, before any tool runs:
 
 ```python
 decision = decide(action, spent_today)
@@ -49,7 +93,7 @@ else:
     result = f"Not allowed: {decision.reason}"   # tell the agent why, so it can adapt
 ```
 
-The model never gets to call a tool directly; it only gets to *ask*.
+The live page does exactly this in `act()` inside `live/index.html`.
 
 ## License
 
