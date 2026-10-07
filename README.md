@@ -50,3 +50,7 @@ else:
 ```
 
 The model never gets to call a tool directly; it only gets to *ask*.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
