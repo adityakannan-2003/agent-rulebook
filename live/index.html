@@ -243,7 +243,7 @@ footer { color: var(--muted); font-size: 13px; max-width: 80ch; }
   </header>
 
   <section class="summary" aria-label="Tonight so far">
-    <div class="tile ok"><span class="n" id="n-done">0</span><span class="l">done on its own</span></div>
+    <div class="tile ok"><span class="n" id="n-done">0</span><span class="l" id="done-label">done on its own</span></div>
     <div class="tile wait"><span class="n" id="n-wait">0</span><span class="l">waiting for you</span></div>
     <div class="tile stop"><span class="n" id="n-deny">0</span><span class="l">blocked by a rule</span></div>
     <div class="tile"><span class="n" id="n-spent">$0 <small>of $500</small></span><span class="l">spent today</span><div class="meter" aria-hidden="true"><i id="meter"></i></div></div>
@@ -409,8 +409,10 @@ footer { color: var(--muted); font-size: 13px; max-width: 80ch; }
   }
 
   function renderSummary() {
-    const done = night.log.filter((e) => e.verdict === "allow").length + night.approvals.filter((a) => a.status === "approved").length;
-    $("n-done").textContent = done;
+    const onItsOwn = night.log.filter((e) => e.verdict === "allow").length;
+    const approved = night.approvals.filter((a) => a.status === "approved").length;
+    $("n-done").textContent = onItsOwn;
+    $("done-label").textContent = "done on its own" + (approved ? ` · ${approved} approved by ${night.replay ? "the owner" : "you"}` : "");
     $("n-wait").textContent = night.approvals.filter((a) => a.status === "waiting").length;
     $("n-deny").textContent = night.log.filter((e) => e.verdict === "deny").length;
     $("n-spent").firstChild.nodeValue = `$${night.spent.toFixed(night.spent % 1 ? 2 : 0)} `;
